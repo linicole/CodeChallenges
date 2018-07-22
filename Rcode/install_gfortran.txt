@@ -1,0 +1,4 @@
+
+# Type these two lines in your terminal, direct quote:
+curl -O http://r.research.att.com/libs/gfortran-4.8.2-darwin13.tar.bz2
+sudo tar fvxj gfortran-4.8.2-darwin13.tar.bz2 -C /
