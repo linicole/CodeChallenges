@@ -1,0 +1,183 @@
+---
+title: "TS Moving Average"
+author: "Nicole Li"
+date: "7/15/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r settings}
+library(tidyverse) # data manipulation and visulization
+library(lubridate) # work with date and time
+library(fpp2) # work with time series data
+library(zoo) # work with time series data
+library(ggplot2) # plotting
+
+```
+
+
+Smoothing methods are a family of forecasting methods that average values over multiple periods in order to reduce noise and uncover patterns in the data. Approaches differ based on the number of values averaged, how the average is computed, and how many times averaging is performed.
+
+
+## Centered Moving Averages
+Technique for calculating and displaying a simple moving average
+
+We choose a number (better to be an odd) of nearby point and average them to estimate the trend. 
+
+    * Eg. y_t = (y(t-2) + y(t-1) + yt + y(t+1) + y(t+2))/5.
+```{r simple smooth}
+# rollmean {zoo}
+savings <- economics %>%  # psavert = personal saving rate
+  select(date, srate = psavert) %>% 
+  mutate(srate_ma01 = rollmean(srate, k=7, fill=NA), # previous 3 values + value + later 3 values
+         srate_ma02 = rollmean(srate, k=9, fill=NA), # previous 4 values + value + later 4 values
+         srate_ma03 = rollmean(srate, k=13, fill=NA),
+         srate_ma04 = rollmean(srate, k=21, fill=NA))
+
+head(savings, 10)
+```
+
+
+```{r simple smooth plot1}
+# the line plots become smoother as moving average's k increases.
+savings %>% 
+  gather(metric, value, -date) %>% 
+  ggplot(aes(x=date, y=value, color=metric)) +
+  geom_line()
+
+```
+
+```{r simple smooth plot2}
+# the line plots become smoother as moving average's k increases.
+savings %>% 
+  gather(metric, value, -date) %>% 
+  ggplot(aes(x=date, y=value, color=metric)) +
+  geom_line() +
+  coord_cartesian(xlim=c(date('2010-01-01'), date('2015-04-01')), ylim = c(0, 12))
+
+```
+
+
+To understand how these different moving averages compare, we can compute MSE (mean squared error) and MAPE (Mean Absolute Percentage Error). With similar MES or MAPE, choose the smoother one.
+```{r ma summary}
+savings %>% 
+  gather(metric, value, -date, -srate) %>%
+  group_by(metric) %>% 
+  summarise(MSE = mean((srate-value)^2, na.rm=T),
+            MAPE = mean(abs((srate-value)/srate), na.rm=T))
+
+```
+<br/><br/>
+
+
+
+## Trailing Moving Average for Forecasting (TMA) --> Naive Forecast
+Centered moving averages are computed by averaging data both in the past and future of a give time point. For forecasting purpose, we use **trailing moving average** where the window of k periods is placed over the most recent available k values. 
+
+    * Eg. y_t = (y(t-4) + y(t-3) + y(t-2) + y(t-1) + y(t))/5.
+```{r trailing}
+# rollmean(..., align='right') {zoo}
+savings_tma <- economics %>% 
+  select(date, srate = psavert) %>% 
+  mutate(srate_tma_t = rollmean(srate, k=20, fill=NA, align='right'),
+         srate_tma_t_plus1_pred = lag(srate_tma_t)) # value in previous row
+
+head(as.data.frame(savings_tma), 30)
+
+```
+
+```{r trailing plot}
+# check if Trailing MA is acurrate...
+savings_tma %>% 
+  select(date, srate, srate_tma_t_plus1_pred) %>% 
+  gather(metric, value, -date) %>% 
+  ggplot(aes(x=date, y=value, color=metric)) +
+  geom_line()
+
+```
+
+```{r trailing summary}
+# check if Trailing MA is acurrate...
+savings_tma %>% 
+  select(date, srate, srate_tma_t_plus1_pred) %>% 
+  summarise(MSE = mean((srate-srate_tma_t_plus1_pred)^2, na.rm=T),
+            MAPE = mean(abs(srate-srate_tma_t_plus1_pred/srate), na.rm=T))
+```
+<br/><br/>
+
+
+
+
+
+## Moving Averages of Moving Averages 
+Using the concept of simple moving averages to perform multi-step smoothing. An even number of data points is often applied, so that the final product is symmetric around each point. 
+
+This can be treated as a symmetric MA that has different weights on each nearby observations.
+
+    * part1 = (y(t-1) + y(t) + y(t+1) + y(t+2))/4
+    * part2 = (y(t-2) + y(t-1) + y(t) + y(t+1))/4
+    * y_t^ = (part1 + part2)/2 = y(t-1)/8 + y(t-1)/4 + y(t)/4 + y(t+1)/4 + y(t+2)/8
+     
+```{r ma ma}
+# data in use: elecsales {fpp2}
+elecsales.df = data.frame(year = time(elecsales), sales = elecsales)
+head(elecsales.df)
+```
+
+```{r ma function}
+elecsales.df %>% 
+  mutate(ma2x4 = ma(sales, order=4, centre=T)) %>% 
+  head()
+```
+
+```{r ma plot}
+# MA2x4 is a bit better than MA2
+elecsales.df %>% 
+  mutate(ma2 = rollmean(sales, k=5, fill=NA),
+         ma2x4 = ma(sales, order=4, centre=T)) %>% 
+  gather(ma, value, -year, -sales) %>% 
+  ggplot(aes(x=year)) +
+  geom_point(aes(y=sales)) +
+  geom_line(aes(y=value, color=ma))
+```
+
+<br/><br/>
+
+
+
+## Weighted Moving Averages
+Smoothing by use of weights specifically chosen for their mathematical properties. More smoother estimation for the trend-cycle.
+
+Weights are all sum to 1 and they are symmetric so that a(j) = a(-j).
+For a simple MA, all weights are equal to 1/m.
+```{r wma}
+ma(AirPassengers, order=12, centre = T)
+```
+<br/><br/>
+
+
+
+
+## Compare **tidyr** and **reshape2** a little:
+
+1. gather vs. melt (wide --> long)
+
+    * gather(data, key.name, value.name, [-columns.not.to.gather]). Eg. gather(mydat, metric, value, -id, -date) so "id" and "date" won't be gathered into key-value columns. "gather" cannot handle matrices or arrays.
+    * melt(data, variable.name, value.names, id.vars=c()), Eg. melt(mydat, variable.name="metric", value.names="value", id.vars=c('id','date')). If melt doesn't receive any id.vars, it'll use factor/character variables as id variable.
+    
+2. spread vs. dcast (long --> wide)
+
+    * spread(data, the_col.key_to_spread, the_col.value_to_spread)
+    * dcast(data, formula = id_no_change ~ the_col.key_to_spread, value.var = "the_col.value_to_spread")
+    * dcast can work with data aggregation: dcast(data, date + time ~ variable) (unique(variable)=c('total_bill','tips')) will give us for each date and time pair, what is the average total_bill (1 col) and the average tips (1 col)
+
+3. separate vs. colsplit (split 1 column into 2 by some separators)
+
+    * For example, there is a column: mydat$record=c('2018.China', '2019.America', '2011.England',...)
+    * separate(data, column, into, sep): separate(mydat, record, into=c('year','country'), sep='\.')
+    * colsplit: needs to combine with other columns --> cbind(mydat[1:2], colsplit(mydat[, 3], "\.", c("location", "time")), mydat[4])
+
+
