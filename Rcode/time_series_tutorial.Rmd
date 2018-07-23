@@ -1,0 +1,216 @@
+---
+title: "Time Series"
+author: "Nicole Li"
+date: "7/22/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r settings}
+library(forecast)
+library(zoo)
+library(fpp2)
+```
+
+
+
+# Part 1: Toolbox 
+
+### I. Some Simple Forecasting 
+
+1. Average method
++ **All** future values are equal to the mean of the historical data --> meanf(ts, h=num_to_pred)
+
+2. Naive method & Seasonal Naive
++ **All** forecasts are simply set to be the value of the last observation (of last season) --> naive(ts, h=num_to_pred)
+
+3. Drift method
++ Allow the forecasts to increase or decrease over time, where the amount of change over time (called the drift) is set to be the average change seen in the historical data
+
+
+### II. Transformations and adjustments
+
+1. Mathematical transformations
++ When the variance of a time series changes, a log transformation may be useful and will constrain the forecast to stay positive. Eg. if log base=10, an increase of 1 on the log scale corresponds to a multiplication of 10 on the original scale. 
++ Power transformation (sqrt, cube root)
++ BoxCox.lambda() will help to choose the lambda for a simpler model.
++ A transformation may have large effect on prediction interval. If there're any negative value in history, consider shift.
+    
+    
+2. Calendar adjustments
++ For example, there will be variation between the months simply because of the different numbers of days in each month in addition to seasonal variation across the year. 
++ Solution: calculate per day for each month
+```{r, eval=FALSE}
+monthdays <- rep(c(31,28,31,30,31,30,31,31,30,31,30,31),14)
+monthdays[26 + (4*12)*(0:2)] <- 29
+par(mfrow=c(2,1))
+plot(milk, main="Monthly milk production per cow", ylab="Pounds",xlab="Years")
+plot(milk/monthdays, main="Average milk production per cow per day", ylab="Pounds", xlab="Years")
+```
+
+3. Population adjustments
++ to eliminate the economics scale effect
+
+4. Inflation adjustments
++ for finance or house price data
+
+
+### III. Evaluating forecast accuracy
+
+1. Forecast accuracy measures
++ MSE (mean squared error) = mean(e^2)
++ RMSE (root mean squared error)
++ MAE (mean absolute error) = mean(|e|)
++ MAPE (mean absolute percentage error) = mean(e/y) *scale-independent, fail if y=0*
++ Different metrics will give different resulting winner, due to 'length of forecast', 'data trend', 'variance', ...
+
+2. Training/test sets & Cross-validation
++ split the data into chronological order helps to make a robust model.
++ split into smaller groups to test model parameters, like geo-location 
+
+
+
+### IV. Residual diagnostics
++ Normal distribution with mu=0 (check with histogram, QQ plot)
++ No auto-correlation (check ACF, PACF)
++ Constant variance (time series plot)
+
+
+
+
+
+
+
+
+
+
+<br><br>
+
+
+
+
+
+
+
+
+
+# Part 2: Time series decomposition 
+-- Trend: changing direction, either linear or non-linear
+
+-- Cyclic: non-fixed fluctuation
+
+-- Seasonal: fixed and unknown period
+
+-- Noise
+
++ **yt = St + Tt + Et** (additive)
++ **yt = St x Tt x Et** (multiplication, variance is proportional to the level of the time series)
+ 
+### I. Moving Average *(mostly used in Classical decomposition)*
+The moving average is used to estimate the trend-cycle in classical decomposition
+
++ Moving average smoothing (around the centric y_t)
++ Moving averages of moving averages (to make an even-order moving average symmetric) --> “2×4-MA” means a 4-MA followed by a 2-MA
++ Estimating the trend-cycle with seasonal data
++ Weighted moving averages
+
+### II. Classical decomposition
+
+### III. X-12-ARIMA decomposition
+
+### IV. STL decomposition (Seasonal and Trend decomposition using Loess)
++ Can handle any type of seasonality, not only monthly and quarterly data
++ The seasonal component is allowed to change over time
++ Can be robust to outliers
+
+
+
+
+
+
+
+
+<br><br>
+
+
+
+
+
+
+
+
+# Part 3: Exponential smoothing
+The more recent the observation the higher the associated weight.
+
+The selection of the method is generally based on recognising key components of the time series (trend and seasonal) and how these enter the smoothing method (in an additive or multiplicative manner).
+
+
+### I. Simple exponential smoothing (SES)
++ For forecasting data with no trend or seasonal pattern
++ Forecasts are calculated using weighted average where the weights decrease expotentially as observations come from further in the past. --> smallest weights for the oldest observations
++ **y(t+1 | t) = a x y(t) + a x (1-a) x y(t-1) + a x (1-a)^2 x y(t-2) ...** where a is the smoothing parameter
++ Weighted Average Form
++ Component form
++ Error correction form
++ Multi-horizon Forecasts
++ SSE (Sum of Squared Errors = sum((y-y^)^2)) for optimization of parameters (eg. alpha, beta, ...)
+
+
+### II. Holt's linear trend method
+* Allows forecasting of data with a trend:
+    + Forecast equation --> l_t + h*b_t (a linear function of h = # of steps ahead)
+    + Level equation l_t (with alpha)
+    + Trend equation b_t (with beta*)
+* Initialise: l_0=y1, b_0=(y2-y1), alpha=0.8, beta=0.2
+
+
+### III. Exponential trend method
++ Forecast equation --> l_t * b_t^h (h: exponential rather than linear)
++ Level equation --> l*b
++ Growth-rate equation --> l_t / l_(t-1)
+
+
+### IV. Damped trend method
+* Introduced a parameter Phi that “dampens” the trend to a flat line some time in the future horizons
+* Additive damped trend
+    + Add Phi into the equations of Holt's linear trend method
+    + So that short-run forecasts are trended while long-run forecasts are constant --> less optimistic
+* Multiplicative damped trend
+
+
+### V. Holt-Winters seasonal method
+* Components:
+    + Forecast equation --> l_t + b_t*h + s
+    + Level equation l_t (with alpha, s, l, b)
+    + Trend equation b_t (with beta, l, b)
+    + Seasonal equation s_t (with gamma, denote m as period of seasonality, l, b)
+* Additive method is preferred when the seasonal variations are roughly constant through the series.
+* Multiplicative method is preferred when the seasonal variations are changing proportional to the level of the series.
+```{r holt-winter}
+aust <- window(austourists, start=2005)
+hw1 <- hw(aust, seasonal = "additive")
+hw2 <- hw(aust, seasonal = "multiplicative")
+
+plot(hw2, ylab="International visitor night in Australia (millions)",
+     plot.conf=FALSE, type="o", fcol="white", xlab="Year")
+lines(fitted(hw1), col="red", lty=2)
+lines(fitted(hw2), col="green", lty=2)
+lines(hw1$mean, type="o", col="red")
+lines(hw2$mean, type="o", col="green")
+legend("topleft",lty=1, pch=1, col=1:3, 
+  c("data","Holt Winters' Additive","Holt Winters' Multiplicative"))
+```
+
+
+
+
+
+
+
+# Part 4: ARIMA Models
+
+
+
